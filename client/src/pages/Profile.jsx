@@ -1,4 +1,4 @@
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import { useRef, useState, useEffect } from "react";
 import {
   getDownloadURL,
@@ -6,21 +6,19 @@ import {
   ref,
   uploadBytesResumable,
 } from "firebase/storage";
-import { app } from "../firebase.js";
+import { app } from "../firebase";
 import {
   updateUserStart,
   updateUserSuccess,
   updateUserFailure,
+  deleteUserFailure,
   deleteUserStart,
   deleteUserSuccess,
-  deleteUserFailure,
-  signOutStart,
-  signOutSuccess,
-  signOutFailure,
+  signOutUserStart,
 } from "../redux/user/userSlice";
+import { useDispatch } from "react-redux";
 import { Link } from "react-router-dom";
-
-const Profile = () => {
+export default function Profile() {
   const fileRef = useRef(null);
   const { currentUser, loading, error } = useSelector((state) => state.user);
   const [file, setFile] = useState(undefined);
@@ -32,6 +30,12 @@ const Profile = () => {
   const [userListings, setUserListings] = useState([]);
   const dispatch = useDispatch();
 
+  // firebase storage
+  // allow read;
+  // allow write: if
+  // request.resource.size < 2 * 1024 * 1024 &&
+  // request.resource.contentType.matches('image/.*')
+
   useEffect(() => {
     if (file) {
       handleFileUpload(file);
@@ -40,8 +44,8 @@ const Profile = () => {
 
   const handleFileUpload = (file) => {
     const storage = getStorage(app);
-    const filename = new Date().getTime() + file.name;
-    const storageRef = ref(storage, filename);
+    const fileName = new Date().getTime() + file.name;
+    const storageRef = ref(storage, fileName);
     const uploadTask = uploadBytesResumable(storageRef, file);
 
     uploadTask.on(
@@ -55,9 +59,9 @@ const Profile = () => {
         setFileUploadError(true);
       },
       () => {
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadUrl) => {
-          setFormData({ ...formData, avatar: downloadUrl });
-        });
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) =>
+          setFormData({ ...formData, avatar: downloadURL })
+        );
       }
     );
   };
@@ -101,7 +105,7 @@ const Profile = () => {
         dispatch(deleteUserFailure(data.message));
         return;
       }
-      dispatch(deleteUserSuccess());
+      dispatch(deleteUserSuccess(data));
     } catch (error) {
       dispatch(deleteUserFailure(error.message));
     }
@@ -109,16 +113,16 @@ const Profile = () => {
 
   const handleSignOut = async () => {
     try {
-      dispatch(signOutStart());
+      dispatch(signOutUserStart());
       const res = await fetch("/api/auth/signout");
       const data = await res.json();
       if (data.success === false) {
-        dispatch(signOutFailure(data.message));
+        dispatch(deleteUserFailure(data.message));
         return;
       }
-      dispatch(signOutSuccess());
+      dispatch(deleteUserSuccess(data));
     } catch (error) {
-      dispatch(signOutFailure(error.message));
+      dispatch(deleteUserFailure(data.message));
     }
   };
 
@@ -131,6 +135,7 @@ const Profile = () => {
         setShowListingsError(true);
         return;
       }
+
       setUserListings(data);
     } catch (error) {
       setShowListingsError(true);
@@ -147,6 +152,7 @@ const Profile = () => {
         console.log(data.message);
         return;
       }
+
       setUserListings((prev) =>
         prev.filter((listing) => listing._id !== listingId)
       );
@@ -154,7 +160,6 @@ const Profile = () => {
       console.log(error.message);
     }
   };
-
   return (
     <div className="p-3 max-w-lg mx-auto">
       <h1 className="text-3xl font-semibold text-center my-7">Profile</h1>
@@ -175,12 +180,12 @@ const Profile = () => {
         <p className="text-sm self-center">
           {fileUploadError ? (
             <span className="text-red-700">
-              Image Upload Error (Image must be less than 2 MB)
+              Error Image upload (image must be less than 2 mb)
             </span>
           ) : filePerc > 0 && filePerc < 100 ? (
             <span className="text-slate-700">{`Uploading ${filePerc}%`}</span>
           ) : filePerc === 100 ? (
-            <span className="text-green-700">Image successfully uploaded</span>
+            <span className="text-green-700">Image successfully uploaded!</span>
           ) : (
             ""
           )}
@@ -188,25 +193,25 @@ const Profile = () => {
         <input
           type="text"
           placeholder="username"
+          defaultValue={currentUser.username}
           id="username"
           className="border p-3 rounded-lg"
-          defaultValue={currentUser.username}
           onChange={handleChange}
         />
         <input
           type="email"
           placeholder="email"
           id="email"
-          className="border p-3 rounded-lg"
           defaultValue={currentUser.email}
+          className="border p-3 rounded-lg"
           onChange={handleChange}
         />
         <input
           type="password"
           placeholder="password"
+          onChange={handleChange}
           id="password"
           className="border p-3 rounded-lg"
-          onChange={handleChange}
         />
         <button
           disabled={loading}
@@ -215,7 +220,7 @@ const Profile = () => {
           {loading ? "Loading..." : "Update"}
         </button>
         <Link
-          className="rounded-lg uppercase text-center bg-green-700 text-white p-3 hover:opacity-95"
+          className="bg-green-700 text-white p-3 rounded-lg uppercase text-center hover:opacity-95"
           to={"/create-listing"}
         >
           Create Listing
@@ -232,6 +237,7 @@ const Profile = () => {
           Sign out
         </span>
       </div>
+
       <p className="text-red-700 mt-5">{error ? error : ""}</p>
       <p className="text-green-700 mt-5">
         {updateSuccess ? "User is updated successfully!" : ""}
@@ -240,8 +246,9 @@ const Profile = () => {
         Show Listings
       </button>
       <p className="text-red-700 mt-5">
-        {showListingsError ? "Error showing listings!" : ""}
+        {showListingsError ? "Error showing listings" : ""}
       </p>
+
       {userListings && userListings.length > 0 && (
         <div className="flex flex-col gap-4">
           <h1 className="text-center mt-7 text-2xl font-semibold">
@@ -283,5 +290,4 @@ const Profile = () => {
       )}
     </div>
   );
-};
-export default Profile;
+}
